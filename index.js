@@ -1,113 +1,98 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const { Pool } = require('pg');
+import express from "express";
+import cors from "cors";
+import pg from "pg";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const pool = new Pool({
+// PostgreSQL client
+const client = new pg.Client({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
 
-// API key check
-app.use((req, res, next) => {
-  const key = req.headers['x-api-key'];
-  if (!key || key !== process.env.API_KEY) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  next();
-});
+client.connect();
 
-// Normalize helper
-function norm(s) {
-  if (!s) return '';
-  return s.toString().toLowerCase().replace(/[^a-z0-9]+/g, '');
-}
-
-// Health check
-app.get('/health', async (req, res) => {
+// ------------------------------------------------------------
+// ⭐ GRAPH-BASED CROSS-REFERENCE SEARCH
+// ------------------------------------------------------------
+app.get("/search", async (req, res) => {
   try {
-    await pool.query('SELECT 1');
-    res.json({ status: 'ok' });
+    const input = req.query.query?.trim().toUpperCase();
+    if (!input) {
+      return res.json({ count: 0, results: [] });
+    }
+
+    // STEP 1 — Load all rows (reference_number <-> part_number pairs)
+    const allRows = await client.query(`
+      SELECT reference_number, make, part_number, company, description
+      FROM crossref
+    `);
+
+    // STEP 2 — Build adjacency list (graph)
+    const graph = {};
+    for (const row of allRows.rows) {
+      const a = row.part_number?.toUpperCase();
+      const b = row.reference_number?.toUpperCase();
+
+      if (!a || !b) continue;
+
+      if (!graph[a]) graph[a] = new Set();
+      if (!graph[b]) graph[b] = new Set();
+
+      graph[a].add(b);
+      graph[b].add(a);
+    }
+
+    // STEP 3 — BFS to find entire connected family
+    const visited = new Set();
+    const queue = [input];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (visited.has(current)) continue;
+
+      visited.add(current);
+
+      if (graph[current]) {
+        for (const neighbor of graph[current]) {
+          if (!visited.has(neighbor)) {
+            queue.push(neighbor);
+          }
+        }
+      }
+    }
+
+    // STEP 4 — Fetch all rows where either field is in the family
+    const family = Array.from(visited);
+
+    const result = await client.query(
+      `
+      SELECT reference_number, make, part_number, company, description
+      FROM crossref
+      WHERE UPPER(reference_number) = ANY($1)
+         OR UPPER(part_number) = ANY($1)
+      `,
+      [family]
+    );
+
+    res.json({
+      count: result.rows.length,
+      results: result.rows
+    });
+
   } catch (err) {
-    res.status(500).json({ status: 'error', details: err.message });
+    console.error("Search error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// TWO‑HOP EXPANSION SEARCH (your exact rule)
-app.get('/search', async (req, res) => {
-  const q = (req.query.query || '').trim();
-  if (!q) {
-    return res.status(400).json({ error: 'Missing query parameter' });
-  }
-
-  const sql = `
-    WITH cleaned AS (
-      SELECT
-        id,
-        reference_number,
-        make,
-        part_number,
-        company,
-        description,
-        REGEXP_REPLACE(LOWER(reference_number), '[^a-z0-9]+', '', 'g') AS ref_clean,
-        REGEXP_REPLACE(LOWER(part_number), '[^a-z0-9]+', '', 'g') AS part_clean
-      FROM access_parts
-    ),
-
-    seed AS (
-      SELECT REGEXP_REPLACE(LOWER($1), '[^a-z0-9]+', '', 'g') AS key
-    ),
-
-    -- FIRST PASS: rows matching the input
-    first_hop_rows AS (
-      SELECT *
-      FROM cleaned
-      WHERE ref_clean = (SELECT key FROM seed)
-         OR part_clean = (SELECT key FROM seed)
-    ),
-
-    -- Collect ALL unique numbers from first hop + original
-    first_hop_numbers AS (
-      SELECT ref_clean AS num FROM first_hop_rows
-      UNION
-      SELECT part_clean AS num FROM first_hop_rows
-      UNION
-      SELECT key AS num FROM seed
-    ),
-
-    -- SECOND PASS: for each number, find rows where ref/part matches
-    second_hop_rows AS (
-      SELECT DISTINCT c.*
-      FROM cleaned c
-      JOIN first_hop_numbers n
-        ON c.ref_clean = n.num
-        OR c.part_clean = n.num
-    )
-
-    SELECT DISTINCT
-      reference_number,
-      make,
-      part_number,
-      company,
-      description
-    FROM second_hop_rows
-    ORDER BY reference_number, make, part_number, company;
-  `;
-
-  try {
-    const { rows } = await pool.query(sql, [q]);
-    res.json({ query: q, count: rows.length, results: rows });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Query failed', details: err.message });
-  }
-});
-
-const port = process.env.PORT || 10000;
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
+// ------------------------------------------------------------
+// SERVER START
+// ------------------------------------------------------------
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
