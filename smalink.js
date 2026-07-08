@@ -919,14 +919,39 @@ window.smalinkActions = function () {
                         "\n\nPlease email me any return paperwork and call tags as needed."
                     );
                 } else {
-                    compose(
-                        "",
-                        "Order for " + m.name,
-                        "Order Number: "    + m.ord  +
-                        "\nAccount Number: " + m.acct +
-                        "\nCompany Name: "   + m.name +
-                        (lines.length ? "\n\nItems:\n" + lines.join("\n") : "")
-                    );
+                    function buildOrderEmail(openLines) {
+                        compose(
+                            "",
+                            "Order for " + m.name,
+                            "Order Number: "    + m.ord  +
+                            "\nAccount Number: " + m.acct +
+                            "\nCompany Name: "   + m.name +
+                            (lines.length ? "\n\nItems:\n" + lines.join("\n") : "") +
+                            (openLines.length ? "\n\nOpen Pick Tickets:\n" + openLines.join("\n") : "")
+                        );
+                    }
+                    function gatherOpenPickTickets() {
+                        var rows = qsa("#ctl00_cp1_gvwShipments tr.gridrow, #ctl00_cp1_gvwShipments tr.altgridrow");
+                        var out  = [];
+                        rows.forEach(function (r) {
+                            var c = r.querySelectorAll("td");
+                            if (c.length < 6) return;
+                            var pt       = txt(c[0]).trim();
+                            var tracking = txt(c[3]).trim();
+                            var printDt  = txt(c[2]).trim();
+                            if (!tracking) out.push("PT# " + pt + (printDt ? "  \u2014  Printed " + printDt : ""));
+                        });
+                        return out;
+                    }
+                    var ptTab = qs("a[href='#picktickets']");
+                    if (ptTab) {
+                        ptTab.click();
+                        setTimeout(function () {
+                            buildOrderEmail(gatherOpenPickTickets());
+                        }, 800);
+                    } else {
+                        buildOrderEmail([]);
+                    }
                 }
             });
         }
