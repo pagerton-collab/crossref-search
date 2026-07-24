@@ -919,7 +919,7 @@ window.smalinkActions = function () {
                         "\n\nPlease email me any return paperwork and call tags as needed."
                     );
                 } else {
-                    function buildOrderEmail(openLines) {
+                    function buildOrderEmail(ptLines) {
                         compose(
                             "",
                             "Order for " + m.name,
@@ -927,10 +927,42 @@ window.smalinkActions = function () {
                             "\nAccount Number: " + m.acct +
                             "\nCompany Name: "   + m.name +
                             (lines.length ? "\n\nItems:\n" + lines.join("\n") : "") +
-                            (openLines.length ? "\n\nOpen Pick Tickets:\n" + openLines.join("\n") : "")
+                            (ptLines.length ? "\n\nPick Tickets:\n" + ptLines.join("\n") : "")
                         );
                     }
-                    function gatherOpenPickTickets() {
+                    function gatherPickTickets() {
+                        var CARRIERS = [
+                            { key:"UPS",          fn:function(n){ return "https://www.ups.com/track?tracknum="+n; }},
+                            { key:"FEDEX FREIGHT",fn:function(n){ return "https://www.fedexfreight.com/fedextrack/?trknbr="+n+"&trkqual=~"+n+"~FDFR"; }},
+                            { key:"FEDEX",        fn:function(n){ return "https://www.fedex.com/fedextrack/?trknbr="+n; }},
+                            { key:"USPS",         fn:function(n){ return "https://tools.usps.com/go/TrackConfirmAction?qtc_tLabels1="+n; }},
+                            { key:"SOUTHEASTERN", fn:function(n){ return "https://www.sefl.com/webconnect/tracing?Type=PN&RefNum1="+n; }},
+                            { key:"SEFL",         fn:function(n){ return "https://www.sefl.com/webconnect/tracing?Type=PN&RefNum1="+n; }},
+                            { key:"ESTES",        fn:function(n){ return "https://www.estesexpress.com/myestes/tracking?pro="+n; }},
+                            { key:"AVERITT",      fn:function(n){ return "https://www.averittexpress.com/trk.action?type=P&id="+n; }},
+                            { key:"SAIA",         fn:function(n){ return "https://www.saia.com/track/details;pro="+n; }},
+                            { key:"OLD DOMINION", fn:function(n){ return "https://www.odfl.com/Trace/TraceAction.do?pro="+n; }},
+                            { key:"ODW",          fn:function(n){ return "https://www.odfl.com/Trace/TraceAction.do?pro="+n; }},
+                            { key:"DAYTON",       fn:function(n){ return "https://tools.daytonfreight.com/tracking/detail/"+n; }},
+                            { key:"AAA COOPER",   fn:function(n){ return "https://www.aaacooper.com/Transit/ProTrackResults.aspx?ProNum="+n; }},
+                            { key:"AAA-COOPER",   fn:function(n){ return "https://www.aaacooper.com/Transit/ProTrackResults.aspx?ProNum="+n; }},
+                            { key:"AAACOOPER",    fn:function(n){ return "https://www.aaacooper.com/Transit/ProTrackResults.aspx?ProNum="+n; }},
+                            { key:"XPO",          fn:function(n){ return "https://ext-web.ltl-xpo.com/public-app/shipments?referenceNumber="+n; }},
+                            { key:"CONWAY",       fn:function(n){ return "https://ext-web.ltl-xpo.com/public-app/shipments?referenceNumber="+n; }},
+                            { key:"N&M",          fn:function(n){ return "https://www.nmtransfer.com/quickTrack?pro="+n; }},
+                            { key:"N & M",        fn:function(n){ return "https://www.nmtransfer.com/quickTrack?pro="+n; }},
+                            { key:"NMTRANSFER",   fn:function(n){ return "https://www.nmtransfer.com/quickTrack?pro="+n; }},
+                            { key:"SPEE-DEE",     fn:function(n){ return "https://speedeedelivery.com/track-a-shipment/?trackingNumber="+n; }},
+                            { key:"SPEEDEE",      fn:function(n){ return "https://speedeedelivery.com/track-a-shipment/?trackingNumber="+n; }},
+                            { key:"SPEED-DEE",    fn:function(n){ return "https://speedeedelivery.com/track-a-shipment/?trackingNumber="+n; }}
+                        ];
+                        function getTrackUrl(carrier, num) {
+                            var cu = (carrier||"").toUpperCase();
+                            for (var i=0;i<CARRIERS.length;i++) {
+                                if (cu.indexOf(CARRIERS[i].key)>-1) return CARRIERS[i].fn(num);
+                            }
+                            return null;
+                        }
                         var rows = qsa("#ctl00_cp1_gvwShipments tr.gridrow, #ctl00_cp1_gvwShipments tr.altgridrow");
                         var out  = [];
                         rows.forEach(function (r) {
@@ -939,16 +971,37 @@ window.smalinkActions = function () {
                             var pt       = txt(c[0]).trim();
                             var tracking = txt(c[3]).trim();
                             var printDt  = txt(c[2]).trim();
-                            if (!tracking) out.push("PT# " + pt + (printDt ? "  \u2014  Printed " + printDt : ""));
+                            var carrier  = txt(c[5]).trim();
+                            out.push("PT# " + pt + (printDt ? "  \u2014  Printed " + printDt : ""));
+                            if (tracking) {
+                                out.push((carrier || "Carrier") + ": " + tracking);
+                                var url = getTrackUrl(carrier, tracking);
+                                if (url) out.push(url);
+                            } else {
+                                out.push("(no tracking #)");
+                            }
+                            out.push("");
                         });
+                        while (out.length && out[out.length - 1] === "") out.pop();
                         return out;
                     }
-                    var ptTab = qs("a[href='#picktickets']");
-                    if (ptTab) {
-                        ptTab.click();
-                        setTimeout(function () {
-                            buildOrderEmail(gatherOpenPickTickets());
-                        }, 800);
+                    function waitForPickTickets(cb, attempts) {
+                        attempts = attempts || 0;
+                        var ready = qsa("#ctl00_cp1_gvwShipments tr.gridrow, #ctl00_cp1_gvwShipments tr.altgridrow");
+                        if (ready.length || attempts >= 20) {
+                            cb();
+                        } else {
+                            setTimeout(function () { waitForPickTickets(cb, attempts + 1); }, 400);
+                        }
+                    }
+                    var ptTab   = qs("a[href='#picktickets']");
+                    var ptLoad  = qs("#ctl00_cp1_btnPickTicketsLoad");
+                    if (ptTab || ptLoad) {
+                        if (ptTab)  ptTab.click();
+                        if (ptLoad) ptLoad.click();
+                        waitForPickTickets(function () {
+                            buildOrderEmail(gatherPickTickets());
+                        });
                     } else {
                         buildOrderEmail([]);
                     }
@@ -1523,6 +1576,109 @@ window.smalinkActions = function () {
                     document.body.appendChild(a); a.click(); document.body.removeChild(a);
                 }
                 setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+            });
+
+            /* Save as PDF -- nicely formatted, base columns only, never cost/margin */
+            exportMenuItem("Save as PDF", function () {
+                var origLabel = "Export \u25be";
+                function buildPdf() {
+                    var list = getSorted();
+                    var m = meta();
+                    var doc = new window.jspdf.jsPDF({ unit: "pt", format: "letter" });
+                    var marginX = 40, y = 50;
+
+                    doc.setFont("helvetica", "bold");
+                    doc.setFontSize(16);
+                    doc.text("Order Summary", marginX, y);
+                    y += 24;
+
+                    doc.setFontSize(10);
+                    doc.setFont("helvetica", "normal");
+                    var headerLines = [];
+                    if (m.ord)  headerLines.push("Order Number: "   + m.ord);
+                    if (m.acct) headerLines.push("Account Number: " + m.acct);
+                    if (m.name) headerLines.push("Company Name: "   + m.name);
+                    if (m.od)   headerLines.push("Order Date: "     + m.od);
+                    headerLines.forEach(function (line) {
+                        doc.text(line, marginX, y);
+                        y += 14;
+                    });
+
+                    if (orderTotal || netWeight) {
+                        y += 6;
+                        doc.setFont("helvetica", "bold");
+                        var sumParts = [];
+                        if (orderTotal) sumParts.push("Order Total: " + orderTotal);
+                        if (netWeight)  sumParts.push("Net Weight: "  + netWeight);
+                        doc.text(sumParts.join("     "), marginX, y);
+                        y += 10;
+                        doc.setFont("helvetica", "normal");
+                    }
+
+                    var body = list.map(function (i) {
+                        return [i.part, i.desc, i.qty, i.cost, i.ext];
+                    });
+
+                    doc.autoTable({
+                        startY: y + 10,
+                        margin: { left: marginX, right: marginX },
+                        head: [["Part Number", "Description", "Qty", "Cost", "Extended"]],
+                        body: body,
+                        styles: { font: "helvetica", fontSize: 9, cellPadding: 5, valign: "top" },
+                        headStyles: { fillColor: [26, 26, 46], textColor: 255, fontStyle: "bold" },
+                        didParseCell: function (data) {
+                            if (data.section === "body" && counts[data.row.raw[0]] > 1) {
+                                data.cell.styles.fillColor = [255, 214, 214];
+                            }
+                        }
+                    });
+
+                    var todayStr = new Date().toISOString().slice(0, 10);
+                    var safeName = (m.name || "order")
+                        .trim()
+                        .replace(/[^\w\s-]/g, "")
+                        .replace(/\s+/g, "_");
+                    var fname = safeName + "_" + todayStr + ".pdf";
+                    var blob = doc.output("blob");
+                    var isIOS = /ipad|iphone|ipod/i.test(navigator.userAgent);
+
+                    function fallbackOpenOrDownload() {
+                        var url = URL.createObjectURL(blob);
+                        if (isIOS) {
+                            window.open(url, "_blank");
+                        } else {
+                            var a = document.createElement("a");
+                            a.href = url;
+                            a.download = fname;
+                            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                        }
+                        setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+                    }
+
+                    var file = null;
+                    try { file = new File([blob], fname, { type: "application/pdf" }); }
+                    catch (e) { /* File constructor unsupported */ }
+
+                    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+                        navigator.share({ files: [file], title: fname }).catch(function () {
+                            /* user cancelled the share sheet -- not an error, do nothing */
+                        });
+                    } else {
+                        fallbackOpenOrDownload();
+                    }
+                    bExport.textContent = origLabel;
+                }
+
+                if (window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API.autoTable) {
+                    buildPdf();
+                } else {
+                    bExport.textContent = "Loading\u2026";
+                    loadScript("https://wildref.us/tools/jspdf.umd.min.js", function () {
+                        loadScript("https://wildref.us/tools/jspdf.plugin.autotable.min.js", function () {
+                            buildPdf();
+                        });
+                    });
+                }
             });
 
             exportWrap.appendChild(exportMenu);
