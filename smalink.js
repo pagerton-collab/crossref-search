@@ -1,7 +1,7 @@
 /* ============================================================
-   SMA Link Actions — Owner Version
-   Hosted at: https://wildref.us/tools/smalink.js
-   Bookmarklet: javascript:(function(){var s=document.createElement('script');s.src='https://wildref.us/tools/smalink.js?_='+Date.now();document.head.appendChild(s);})();
+   SMA Link Actions — TEST Version (pick-ticket/tracking fix)
+   Hosted at: https://wildref.us/tools/smalinkp.js
+   Bookmarklet: javascript:(function(){var s=document.createElement('script');s.src='https://wildref.us/tools/smalinkp.js?_='+Date.now();document.head.appendChild(s);})();
    ============================================================ */
 
 window.smalinkActions = function () {
@@ -24,7 +24,7 @@ window.smalinkActions = function () {
            CONFIG  —  edit this block only
         ============================================================ */
         var CFG = {
-            version:  "9.1",
+            version:  "G9.6",
             buyerMap: {
                 "Eli Lee": "elijah.lee@smalink.com"
                 /* add more exceptions here:
@@ -253,6 +253,73 @@ window.smalinkActions = function () {
                     encodeURIComponent(pn), "_blank"
                 );
             } catch (e) {}
+        }
+
+        /* ============================================================
+           SHIPMENT / PICK-TICKET GRID HELPERS
+           Used by both the Tracking picker mode and the Order-email
+           pick-ticket gathering step below.
+
+           WHY THIS EXISTS (bug fix, July 2026):
+           1) The order-email flow used to click the visible "Pick
+              Tickets" tab AND a hidden load button at the same time.
+              That fires two competing ASP.NET postbacks, which is what
+              caused the occasional "hang" when creating an order email.
+              Fix: only ever click the visible tab anchor.
+           2) Both flows used a fixed timeout (800ms / 400ms*20) before
+              reading the shipment grid. If the grid already had rows
+              in it from a previous tab load, or the postback was slow,
+              this could read stale or incomplete data. Fix: snapshot
+              the grid's content before clicking, then poll until the
+              content actually changes (or new rows appear) instead of
+              guessing a delay.
+        ============================================================ */
+        function tabIsActive(tab) {
+            if (!tab) return false;
+            if (tab.classList && tab.classList.contains("active")) return true;
+            var li = tab.closest ? tab.closest("li") : null;
+            if (li && li.classList && li.classList.contains("active")) return true;
+            if (tab.getAttribute && tab.getAttribute("aria-selected") === "true") return true;
+            return false;
+        }
+
+        function shipmentRows() {
+            return qsa("#ctl00_cp1_gvwShipments tr.gridrow, #ctl00_cp1_gvwShipments tr.altgridrow");
+        }
+
+        function shipmentSignature() {
+            return shipmentRows().map(function (r) { return txt(r); }).join("|");
+        }
+
+        function waitForShipmentGrid(cb) {
+            var ptTab    = qs("a[href='#picktickets']");
+            var priorSig = shipmentSignature();
+
+            /* Only click the visible tab -- never a hidden "load" button too. */
+            if (ptTab) {
+                try { ptTab.click(); } catch (e) {}
+            }
+
+            var attempts    = 0;
+            var maxAttempts = 25; /* ~500ms head-start + 25*400ms ≈ 10.5s ceiling */
+
+            function poll() {
+                attempts++;
+                var rows = shipmentRows();
+                var sig  = shipmentSignature();
+                var haveRows     = rows.length > 0;
+                var changedOrNew = haveRows && (sig !== priorSig || !priorSig);
+
+                if (changedOrNew || attempts >= maxAttempts) {
+                    cb();
+                } else {
+                    setTimeout(poll, 400);
+                }
+            }
+
+            /* small head-start so the postback has time to kick off before we
+               start comparing signatures */
+            setTimeout(poll, 500);
         }
 
         /* ============================================================
@@ -585,14 +652,14 @@ window.smalinkActions = function () {
                     trackingDiv._textLines = textLines;
                 }
 
-                /* Click the Pick-Tickets tab to trigger load, then render */
+                /* Click the Pick-Tickets tab (if needed) and wait for the grid to
+                   actually refresh before rendering -- instead of a fixed 800ms
+                   guess, which was returning stale/empty data inconsistently. */
                 var ptTab = qs("a[href='#picktickets']");
-                if (ptTab) {
-                    ptTab.click();
-                    /* Give the page a moment to load the tab content */
-                    setTimeout(renderShipments, 800);
-                } else {
+                if (ptTab && tabIsActive(ptTab) && shipmentRows().length) {
                     renderShipments();
+                } else {
+                    waitForShipmentGrid(renderShipments);
                 }
             }
 
@@ -985,23 +1052,19 @@ window.smalinkActions = function () {
                         while (out.length && out[out.length - 1] === "") out.pop();
                         return out;
                     }
-                    function waitForPickTickets(cb, attempts) {
-                        attempts = attempts || 0;
-                        var ready = qsa("#ctl00_cp1_gvwShipments tr.gridrow, #ctl00_cp1_gvwShipments tr.altgridrow");
-                        if (ready.length || attempts >= 20) {
-                            cb();
-                        } else {
-                            setTimeout(function () { waitForPickTickets(cb, attempts + 1); }, 400);
-                        }
-                    }
-                    var ptTab   = qs("a[href='#picktickets']");
-                    var ptLoad  = qs("#ctl00_cp1_btnPickTicketsLoad");
-                    if (ptTab || ptLoad) {
-                        if (ptTab)  ptTab.click();
-                        if (ptLoad) ptLoad.click();
-                        waitForPickTickets(function () {
+                    /* Only click the visible Pick-Tickets tab -- never the hidden
+                       load button at the same time (that double-postback was the
+                       cause of the occasional hang). Wait for the grid to actually
+                       refresh before reading it, so we don't grab stale data. */
+                    var ptTab = qs("a[href='#picktickets']");
+                    if (ptTab) {
+                        if (tabIsActive(ptTab) && shipmentRows().length) {
                             buildOrderEmail(gatherPickTickets());
-                        });
+                        } else {
+                            waitForShipmentGrid(function () {
+                                buildOrderEmail(gatherPickTickets());
+                            });
+                        }
                     } else {
                         buildOrderEmail([]);
                     }
