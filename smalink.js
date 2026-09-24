@@ -1020,7 +1020,7 @@ window.smalinkActions = function () {
                     function buildOrderEmail(ptLines) {
                         compose(
                             "",
-                            "Order for " + m.name,
+                            (m.ord ? "Order #" + m.ord + " for " : "Order for ") + m.name,
                             "Order Number: "    + m.ord  +
                             "\nAccount Number: " + m.acct +
                             "\nCompany Name: "   + m.name +
