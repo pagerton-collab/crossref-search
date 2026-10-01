@@ -46,8 +46,6 @@ window.smalinkActions = function () {
                 isLiterature: u.indexOf("smalink.com/documents") > -1,
                 isNewsletterProduct: u.indexOf("smalink.com") > -1 &&
                                      u.indexOf("wc.smalink") === -1,
-                isSalesRep:   u.indexOf("salesreps")             > -1,
-                isCRM:        u.indexOf("crm.smalink.net")        > -1,
                 isShoppingCart: u.indexOf("smalink.com/shoppingcart") > -1,
                 isSmalinkItem: u.indexOf("smalink.com/p/") > -1
             };
@@ -1250,260 +1248,7 @@ window.smalinkActions = function () {
         }
 
         /* ============================================================
-           SALES REP CHART DATA
-        ============================================================ */
-        function chartData() {
-            var areas = qsa("area[title]");
-            if (!areas.length) {
-                alert("No chart data found.\nNavigate to: https://wc.smalink.net/salesreps/");
-                return;
-            }
-
-            /* ── Parse & dedupe titles: "Rep Name: $12,345.67" ── */
-            var seen = {}, reps = [];
-            areas.forEach(function (a) {
-                var t = (a.title || "").trim();
-                if (!t || seen[t]) return;
-                seen[t] = true;
-                var parts = t.split(/:\s*\$/);
-                var name  = (parts[0] || t).trim();
-                var amt   = parts[1] ? parseFloat(parts[1].replace(/,/g, "")) : null;
-                reps.push({ raw: t, name: name, amt: amt });
-            });
-
-            /* sort descending by amount */
-            reps.sort(function (a, b) {
-                return (b.amt || 0) - (a.amt || 0);
-            });
-
-            /* find max for bar scaling */
-            var maxAmt = reps.reduce(function (m, r) {
-                return Math.max(m, r.amt || 0);
-            }, 0);
-
-            /* ── Try to grab a date/period label from the page ── */
-            var periodEl = qs(".page-title, h1, h2, #ctl00_cp1_lblTitle, #ctl00_cp1_lblPeriod");
-            var period   = periodEl ? txt(periodEl) : "";
-
-            /* ── Format helpers ── */
-            function fmt(n) {
-                if (n === null || isNaN(n)) return "—";
-                return "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-            }
-
-            /* ── Total ── */
-            var total = reps.reduce(function (s, r) { return s + (r.amt || 0); }, 0);
-
-            /* ── Build plain-text version (for copy / SMS) ── */
-            function buildText() {
-                var lines = [];
-                if (period) lines.push(period);
-                lines.push("Sales Rep Summary");
-                lines.push("─".repeat(32));
-                var rank = 1;
-                reps.forEach(function (r) {
-                    lines.push(rank + ". " + r.name + "  " + fmt(r.amt));
-                    rank++;
-                });
-                lines.push("─".repeat(32));
-                lines.push("Total:  " + fmt(total));
-                return lines.join("\n");
-            }
-
-            /* ── Panel ── */
-            var p   = makePanel("📈  Sales Rep Summary");
-            var pan = p.panel;
-
-            /* period sub-header */
-            if (period) {
-                var sub = el("div",
-                    "text-align:center;font-size:12px;color:#aaa;padding:4px 0 2px;" +
-                    "background:#1a1a2e;margin-top:-1px;flex-shrink:0");
-                sub.textContent = period;
-                pan.appendChild(sub);
-            }
-
-            /* scrollable card list */
-            var scroll = el("div", S.scroll + ";padding:10px 10px 4px");
-
-            /* total card */
-            var totCard = el("div",
-                "background:#1a1a2e;color:#fff;border-radius:11px;padding:12px 14px;" +
-                "margin-bottom:10px;display:flex;justify-content:space-between;" +
-                "align-items:center");
-            var totLbl = el("span", "font-size:13px;font-weight:700;opacity:.8");
-            totLbl.textContent = "TOTAL";
-            var totAmt = el("span", "font-size:20px;font-weight:800;letter-spacing:-.3px");
-            totAmt.textContent = fmt(total);
-            totCard.appendChild(totLbl);
-            totCard.appendChild(totAmt);
-            scroll.appendChild(totCard);
-
-            /* rep cards */
-            reps.forEach(function (r, idx) {
-                var pct = maxAmt > 0 ? (r.amt || 0) / maxAmt : 0;
-
-                /* medal for top 3 */
-                var medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : "";
-
-                var card = el("div",
-                    "background:#fff;border:1.5px solid #e8e8ee;border-radius:11px;" +
-                    "padding:10px 12px;margin-bottom:7px;overflow:hidden");
-
-                /* name + amount row */
-                var row1 = el("div",
-                    "display:flex;justify-content:space-between;align-items:baseline;gap:8px");
-                var nameEl = el("span",
-                    "font-size:14px;font-weight:700;color:#1a1a2e;flex:1;" +
-                    "white-space:nowrap;overflow:hidden;text-overflow:ellipsis");
-                nameEl.textContent = (medal ? medal + "  " : (idx + 1) + ".  ") + r.name;
-                var amtEl = el("span",
-                    "font-size:15px;font-weight:800;color:#1a1a2e;white-space:nowrap");
-                amtEl.textContent = fmt(r.amt);
-                row1.appendChild(nameEl);
-                row1.appendChild(amtEl);
-                card.appendChild(row1);
-
-                /* progress bar */
-                var barTrack = el("div",
-                    "margin-top:7px;height:6px;background:#f0f0f5;border-radius:4px;overflow:hidden");
-                var barFill = el("div",
-                    "height:100%;border-radius:4px;background:" +
-                    (idx === 0 ? "#f5a623" : idx === 1 ? "#9b9b9b" : idx === 2 ? "#c47c3a" : "#1a1a2e") +
-                    ";width:" + Math.round(pct * 100) + "%");
-                barTrack.appendChild(barFill);
-                card.appendChild(barTrack);
-
-                /* pct of total */
-                var pctLbl = el("div",
-                    "margin-top:4px;font-size:11px;color:#999;text-align:right");
-                var sharePct = total > 0 ? ((r.amt || 0) / total * 100).toFixed(1) : "0.0";
-                pctLbl.textContent = sharePct + "% of total";
-                card.appendChild(pctLbl);
-
-                scroll.appendChild(card);
-            });
-
-            pan.appendChild(scroll);
-
-            /* ── Footer ── */
-            var foot = el("div",
-                "padding:8px 10px;border-top:1px solid #e0e0e0;background:#fafafa;" +
-                "flex-shrink:0;display:flex;flex-direction:column;gap:6px");
-
-            var footRow1 = el("div", "display:flex;gap:6px");
-
-            var bCopy = el("button", S.btnPri); bCopy.textContent = "📋  Copy";
-            var bSms  = el("button", S.btnPri);
-            bSms.textContent = "💬  Text";
-            bSms.style.background = "#2ecc71";
-
-            var bCa   = el("button", S.btnDanger); bCa.textContent = "Close";
-
-            [bCopy, bSms, bCa].forEach(function (b) { footRow1.appendChild(b); });
-            foot.appendChild(footRow1);
-            pan.sealFooter(foot);
-
-            bCa.addEventListener("click", p.close);
-
-            bCopy.addEventListener("click", function () {
-                copyText(buildText(),
-                    function () { bCopy.textContent = "✓ Copied!"; },
-                    function () { alert("Copy failed."); }
-                );
-            });
-
-            bSms.addEventListener("click", function () {
-                /* sms: URI opens the native Messages app pre-filled */
-                var body = encodeURIComponent(buildText());
-                window.open("sms:?&body=" + body, "_self");
-            });
-        }
-
-        /* ============================================================
-           REMOTE ORDER COST  (polished panel, matches design system)
-        ============================================================ */
-        function remoteOrderCost() {
-            var rows = qsa("tr.gridrow, tr.altgridrow");
-            if (!rows.length) { alert("No items found."); return; }
-
-            var tsv = [["Part","Description","Dealer Cost","Margin %","Our Cost"].join("\t")];
-
-            var p   = makePanel("Remote Order Cost");
-            var pan = p.panel;
-
-            var tblWrap = el("div",
-                S.scroll + ";padding:0;font-family:monospace;font-size:13px");
-
-            var tbl = document.createElement("table");
-            tbl.style.cssText =
-                "width:100%;border-collapse:collapse;font-size:13px;min-width:360px";
-
-            var hdrRow = document.createElement("tr");
-            hdrRow.style.background = "#1a1a2e";
-            ["Part","Description","Dealer Cost","Margin %","Our Cost"].forEach(function (h) {
-                var th = document.createElement("th");
-                th.textContent = h;
-                th.style.cssText =
-                    "padding:8px 8px;text-align:left;color:#fff;font-weight:700;white-space:nowrap";
-                hdrRow.appendChild(th);
-            });
-            tbl.appendChild(hdrRow);
-
-            rows.forEach(function (r, idx) {
-                var part   = r.querySelector("[id*='lblItemId']");
-                var desc   = r.querySelector("[id*='lblItemDesc']");
-                var dealer = r.querySelector("[id*='lblUnitPrice']");
-                var mEl    = r.querySelector("[id*='DisplayProfitV'] small") ||
-                             r.querySelector("[id*='DisplayProfit']");
-
-                if (!dealer || !part || !desc) return;
-
-                var partNum    = txt(part);
-                var descTxt    = txt(desc);
-                var dealerCost = pN(txt(dealer));
-                var margin     = pN(mEl ? txt(mEl) : "0");
-                var ourCost    = (dealerCost * (1 - margin / 100)).toFixed(2);
-                var marginTxt  = margin.toFixed(2) + "%";
-
-                tsv.push([partNum, descTxt,
-                    dealerCost.toFixed(2), marginTxt, ourCost].join("\t"));
-
-                var tr = document.createElement("tr");
-                tr.style.background = idx % 2 === 0 ? "#fff" : "#f7f7fb";
-                [partNum, descTxt, "$" + dealerCost.toFixed(2), marginTxt, "$" + ourCost].forEach(
-                    function (val) {
-                        var td = document.createElement("td");
-                        td.textContent = val;
-                        td.style.cssText =
-                            "padding:7px 8px;border-bottom:1px solid #e8e8e8;" +
-                            "vertical-align:top;color:#222;white-space:nowrap";
-                        tr.appendChild(td);
-                    }
-                );
-                tbl.appendChild(tr);
-            });
-
-            tblWrap.appendChild(tbl);
-            pan.appendChild(tblWrap);
-
-            var foot = el("div", S.foot);
-            var bCopy = el("button", S.btnPri); bCopy.textContent = "Copy for Excel";
-            var bCa   = el("button", S.btnDanger);    bCa.textContent   = "Close";
-            foot.appendChild(bCopy); foot.appendChild(bCa);
-            pan.sealFooter(foot);
-
-            bCa.addEventListener("click", p.close);
-            bCopy.addEventListener("click", function () {
-                copyText(tsv.join("\n"),
-                    function () { bCopy.textContent = "✓ Copied!"; },
-                    function () { alert("Copy failed."); }
-                );
-            });
-        }
-
-        /* ============================================================
-           ORDER VIEWER -- combined with cost/margin toggle
+           ORDER VIEWER
         ============================================================ */
         function orderViewer() {
             var docs = [document];
@@ -1529,11 +1274,6 @@ window.smalinkActions = function () {
 
             var viewItems = [];
             partRows.forEach(function (r, i) {
-                var dealerEl   = r.querySelector("span[id*='lblUnitPrice']");
-                var mEl        = r.querySelector("[id*='DisplayProfitV'] small") ||
-                                 r.querySelector("[id*='DisplayProfit']");
-                var dealerCost = pN(txt(dealerEl));
-                var margin     = pN(mEl ? txt(mEl) : "0");
                 viewItems.push({
                     idx:    i,
                     part:   txt(r.querySelector("span[id*='lblItemId']") || r.querySelector("b")),
@@ -1542,10 +1282,7 @@ window.smalinkActions = function () {
                     longDesc: txt(r.querySelector("small")) || "",
                     qty:    txt(r.querySelector("span[id*='lblUnitQuantity']")) || "",
                     cost:   txt(r.querySelector("span[id*='lblUnitPrice']"))    || "",
-                    ext:    txt(r.querySelector("span[id*='lblExtendedPrice']")) || "",
-                    dealer: dealerCost.toFixed(2),
-                    margin: margin.toFixed(2),
-                    our:    (dealerCost * (1 - margin / 100)).toFixed(2)
+                    ext:    txt(r.querySelector("span[id*='lblExtendedPrice']")) || ""
                 });
             });
 
@@ -1555,8 +1292,6 @@ window.smalinkActions = function () {
             viewItems.forEach(function (i) {
                 counts[i.part] = (counts[i.part] || 0) + 1;
             });
-
-            var showCost = false;
 
             /* Full-screen overlay */
             var ov = el("div",
@@ -1618,7 +1353,7 @@ window.smalinkActions = function () {
                 return list;
             }
 
-            /* Copy for Excel -- base columns only, NEVER cost/margin */
+            /* Copy for Excel */
             exportMenuItem("Copy for Excel", function () {
                 var list = getSorted();
                 var rows = [["Part Number","Description","Qty","Cost","Extended"].join("\t")];
@@ -1634,7 +1369,7 @@ window.smalinkActions = function () {
                 );
             });
 
-            /* Download .txt -- base columns only, NEVER cost/margin */
+            /* Download .txt */
             exportMenuItem("Download .txt", function () {
                 var list = getSorted();
                 var rows = [["Part Number","Description","Qty","Cost","Extended"].join("\t")];
@@ -1672,7 +1407,7 @@ window.smalinkActions = function () {
                 setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
             });
 
-            /* Save as PDF -- nicely formatted, base columns only, never cost/margin */
+            /* Save as PDF */
             exportMenuItem("Save as PDF", function () {
                 var origLabel = "Export \u25be";
                 function buildPdf() {
@@ -1800,34 +1535,6 @@ window.smalinkActions = function () {
                 "background:#e74c3c;color:#fff;font-weight:700;cursor:pointer");
             bClose.textContent = "\u2715 Close";
 
-            /* Money bag cost toggle -- top-right corner, two states only */
-            var bCostToggle = el("button",
-                "width:34px;height:34px;flex-shrink:0;" +
-                "border:none;border-radius:50%;background:rgba(255,255,255,.15);" +
-                "font-size:20px;cursor:pointer;display:flex;align-items:center;" +
-                "justify-content:center;padding:0;transition:background .2s,box-shadow .2s;" +
-                "filter:grayscale(1);opacity:.6");
-            bCostToggle.textContent = "\uD83D\uDCB0";
-            bCostToggle.title = "Toggle cost & margin";
-            topBar.appendChild(bCostToggle);
-
-            bCostToggle.addEventListener("click", function (e) {
-                e.stopPropagation();
-                showCost = !showCost;
-                if (showCost) {
-                    bCostToggle.style.filter = "none";
-                    bCostToggle.style.opacity = "1";
-                    bCostToggle.style.background = "#27ae60";
-                    bCostToggle.style.boxShadow = "0 0 10px #27ae60";
-                } else {
-                    bCostToggle.style.filter = "grayscale(1)";
-                    bCostToggle.style.opacity = ".6";
-                    bCostToggle.style.background = "rgba(255,255,255,.15)";
-                    bCostToggle.style.boxShadow = "";
-                }
-                renderTable(sortCb.checked, showCost);
-            });
-
             ov.appendChild(topBar);
 
             /* summary bar */
@@ -1860,7 +1567,7 @@ window.smalinkActions = function () {
             tbl.style.cssText =
                 "border-collapse:collapse;font-family:monospace;font-size:13px;width:100%";
 
-            function renderTable(sorted, showExtra) {
+            function renderTable(sorted) {
                 var list = viewItems.slice();
                 if (sorted) list.sort(function (a, b) {
                     return a.part.localeCompare(b.part, undefined,
@@ -1870,16 +1577,12 @@ window.smalinkActions = function () {
                 var hRow = document.createElement("tr");
                 hRow.style.cssText = "background:#1a1a2e;position:sticky;top:0";
                 var cols = ["Part Number","Description","Qty","Cost","Extended"];
-                if (showExtra) cols = cols.concat(["Dealer Cost","Margin %","Our Cost"]);
                 cols.forEach(function (h) {
                     var th = document.createElement("th");
                     th.textContent = h;
                     th.style.cssText =
                         "padding:9px 10px;text-align:left;color:#fff;white-space:nowrap;" +
                         "border-right:1px solid #2d2d4e;font-weight:700;font-size:13px";
-                    if (showExtra && (h === "Dealer Cost" || h === "Margin %" || h === "Our Cost")) {
-                        th.style.background = "#2d4a2d";
-                    }
                     hRow.appendChild(th);
                 });
                 tbl.appendChild(hRow);
@@ -1888,18 +1591,12 @@ window.smalinkActions = function () {
                     var tr = document.createElement("tr");
                     tr.style.background = isDup ? "#ffd6d6" : (idx % 2 === 0 ? "#fff" : "#f7f7fb");
                     var vals = [i.part, i.desc, i.qty, i.cost, i.ext];
-                    if (showExtra) vals = vals.concat([i.dealer, i.margin + "%", i.our]);
                     vals.forEach(function (v, vi) {
                         var td = document.createElement("td");
                         td.textContent = v;
                         td.style.cssText =
                             "padding:7px 10px;border-bottom:1px solid #e8e8e8;" +
                             "vertical-align:top;white-space:nowrap";
-                        if (showExtra && vi >= 5) {
-                            td.style.background = isDup ? "" :
-                                (idx % 2 === 0 ? "#f0fff0" : "#e8f8e8");
-                            td.style.color = "#1a5c1a";
-                        }
                         tr.appendChild(td);
                     });
                     tbl.appendChild(tr);
@@ -1922,11 +1619,11 @@ window.smalinkActions = function () {
             ov.appendChild(tblWrap);
             ov.appendChild(botBar);
             document.body.appendChild(ov);
-            renderTable(true, false);
+            renderTable(true);
 
-            sortCb.onchange = function () { renderTable(sortCb.checked, showCost); };
+            sortCb.onchange = function () { renderTable(sortCb.checked); };
 
-            /* Email copy -- always base columns only, never cost/margin */
+            /* Email copy */
             bCopyHtml.addEventListener("click", function () {
                 var emailTbl = document.createElement("table");
                 emailTbl.style.cssText = tbl.style.cssText;
@@ -2010,6 +1707,250 @@ window.smalinkActions = function () {
 
             bClose.addEventListener("click", function () {
                 document.body.removeChild(ov);
+            });
+        }
+
+        /* ============================================================
+           REMOTE ORDER RMA EMAIL  (added)
+           Its own action on the remote order screen (see PAGE.isRemote
+           actions below). Pick items, a return reason and a return qty
+           for each, then build the same RMA email the Order page uses
+           (to smareturns@smalink.com). Account name / number / order #
+           are prefilled from meta() when found and are editable, since
+           the remote order screen may not expose them.
+        ============================================================ */
+        /* Account name / number / order # for the remote order screen.
+           1) meta() -- the same lookup the Order page RMA uses.
+           2) If that finds nothing (the remote form lacks those elements),
+              scan the page (and same-origin frames) for text in the
+              "123456 - Company Name" or "Company Name (123456)" format,
+              checking spans, labels, cells, text inputs and selected
+              dropdown options, skipping the item grid. */
+        function remoteAcctInfo() {
+            var m = meta();
+            var out = { acct: m.acct || "", name: m.name || "", ord: m.ord || "" };
+            if (out.acct && out.name) return out;
+
+            var docs = [document];
+            for (var fi = 0; fi < window.frames.length; fi++) {
+                try { if (window.frames[fi].document) docs.push(window.frames[fi].document); }
+                catch (e) {}
+            }
+            var re1 = /^(\d{5,7})\s*[-–]\s*(\S.{1,100})$/;
+            var re2 = /^(\S.{1,100}?)\s*\(\s*(\d{5,7})\s*\)$/;
+            var found = null;
+            docs.forEach(function (d) {
+                if (found) return;
+                var nodes = [];
+                try {
+                    nodes = Array.prototype.slice.call(d.querySelectorAll(
+                        "span,label,td,div,a,b,strong,h1,h2,h3,h4,input[type=text],select"));
+                } catch (e) {}
+                for (var ni = 0; ni < nodes.length && !found; ni++) {
+                    var n = nodes[ni];
+                    try { if (n.closest("tr.gridrow,tr.altgridrow")) continue; } catch (e) {}
+                    var t = "";
+                    if (n.tagName === "INPUT") t = n.value || "";
+                    else if (n.tagName === "SELECT")
+                        t = (n.options && n.selectedIndex > -1 && n.options[n.selectedIndex])
+                            ? n.options[n.selectedIndex].text : "";
+                    else {
+                        if (n.children && n.children.length > 2) continue;
+                        t = n.innerText || n.textContent || "";
+                    }
+                    t = String(t).replace(/\s+/g, " ").trim();
+                    if (!t || t.length > 140) continue;
+                    var a = t.match(re1);
+                    if (a) { found = { acct: a[1], name: a[2].trim() }; break; }
+                    var b = t.match(re2);
+                    if (b) { found = { acct: b[2], name: b[1].trim() }; break; }
+                }
+            });
+            if (found) {
+                if (!out.acct) out.acct = found.acct;
+                if (!out.name) out.name = found.name;
+            }
+            return out;
+        }
+
+        function remoteOrderRma() {
+            /* read line items the same way the Order Viewer does */
+            var docs = [document];
+            for (var fi = 0; fi < window.frames.length; fi++) {
+                try { if (window.frames[fi].document) docs.push(window.frames[fi].document); }
+                catch (e) {}
+            }
+            var partRows = [];
+            docs.forEach(function (d) {
+                try {
+                    d.querySelectorAll("tr.altgridrow,tr.gridrow").forEach(function (r) {
+                        if (r.querySelector(
+                            "span[id*='lblItemId'],span[id*='lblItemDesc']," +
+                            "span[id*='lblItemDescription']"
+                        )) partRows.push(r);
+                    });
+                } catch (e) {}
+            });
+            var viewItems = partRows.map(function (r) {
+                return {
+                    part: txt(r.querySelector("span[id*='lblItemId']") || r.querySelector("b")),
+                    desc: txt(r.querySelector("span[id*='lblItemDesc']") ||
+                              r.querySelector("span[id*='lblItemDescription']")),
+                    qty:  txt(r.querySelector("span[id*='lblUnitQuantity']")) || ""
+                };
+            });
+            if (!viewItems.length) { alert("No items found on this page."); return; }
+            viewItems.sort(function (a, b) {
+                return a.part.localeCompare(b.part, undefined,
+                    { numeric: true, sensitivity: "base" });
+            });
+            function getSorted() { return viewItems; }
+
+            var m = remoteAcctInfo();
+            var REASONS = ["", "Damaged in Transit", "Defective", "Ordered in Error",
+                           "Overage", "Shortage", "Wrong Part Shipped"];
+
+            function cleanQty(s) {
+                return String(s || "").replace(/[^\d.]/g, "").replace(/\.0+$/, "");
+            }
+
+            var p   = makePanel("RMA Email");
+            var pan = p.panel;
+            var body = el("div", S.scroll);
+
+            /* account name / number -- read-only, pulled from the page.
+               Only if the page gives us nothing do we show boxes to type in. */
+            var name = m.name || "", acct = m.acct || "";
+            var inName = null, inAcct = null;
+            if (name || acct) {
+                var acctLine = el("div",
+                    "font-size:13px;font-weight:700;color:#1a1a2e;background:#f0f0f8;" +
+                    "border-radius:8px;padding:7px 10px;margin-bottom:6px");
+                acctLine.textContent = name + (acct ? "  (" + acct + ")" : "");
+                body.appendChild(acctLine);
+            } else {
+                function field(label) {
+                    var inp = el("input",
+                        "width:100%;box-sizing:border-box;padding:7px;font-size:16px;" +
+                        "border:1px solid #bbb;border-radius:8px;margin-bottom:6px");
+                    inp.type = "text"; inp.placeholder = label;
+                    body.appendChild(inp);
+                    return inp;
+                }
+                inName = field("Account Name");
+                inAcct = field("Account Number");
+            }
+
+            var hint = el("div", S.sep);
+            hint.textContent = "Check items to return — select a reason for each";
+            body.appendChild(hint);
+
+            /* item rows */
+            var rows = [];
+            getSorted().forEach(function (i) {
+                var q = cleanQty(i.qty);
+
+                var row = el("div",
+                    S.row + ";background:#fafafa;border:1.5px solid #ddd");
+                var cb = el("input",
+                    "width:20px;height:20px;flex:0 0 auto;margin-top:2px;cursor:pointer");
+                cb.type = "checkbox";
+
+                var right  = el("div", "flex:1;min-width:0");
+                var topRow = el("div",
+                    "display:flex;align-items:center;gap:8px;overflow:hidden");
+                var main = el("span",
+                    "flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap");
+                main.textContent = (q ? q + " × " : "") + i.part;
+
+                var qtyIn = el("input",
+                    "display:none;width:54px;padding:4px 6px;font-size:16px;" +
+                    "border:1px solid #bbb;border-radius:7px;text-align:center");
+                qtyIn.type = "number"; qtyIn.value = q; qtyIn.min = "1";
+                if (q) qtyIn.max = q;
+
+                topRow.appendChild(main);
+                topRow.appendChild(qtyIn);
+                right.appendChild(topRow);
+
+                var desc = el("div",
+                    "font-size:12px;color:#666;margin-top:2px;white-space:nowrap;" +
+                    "overflow:hidden;text-overflow:ellipsis");
+                desc.textContent = i.desc;
+                right.appendChild(desc);
+
+                var sel = el("select",
+                    "display:none;width:100%;margin-top:8px;padding:7px;font-size:16px;" +
+                    "border-radius:8px;border:1px solid #bbb;background:#fff");
+                REASONS.forEach(function (x) {
+                    var o = document.createElement("option");
+                    o.textContent = x; sel.appendChild(o);
+                });
+                right.appendChild(sel);
+
+                row.appendChild(cb);
+                row.appendChild(right);
+                body.appendChild(row);
+
+                cb.addEventListener("change", function () {
+                    sel.style.display   = cb.checked ? "block"        : "none";
+                    qtyIn.style.display = cb.checked ? "inline-block" : "none";
+                    if (!cb.checked) { sel.value = ""; qtyIn.value = q; }
+                });
+
+                rows.push({ cb: cb, qtyIn: qtyIn, sel: sel, qty: q,
+                            part: i.part, desc: i.desc });
+            });
+
+            pan.appendChild(body);
+
+            /* footer */
+            var foot = el("div", S.foot);
+            var bAll = el("button", S.btn);
+            bAll.textContent = "Select All";
+            var bCa = el("button", S.btnDanger);
+            bCa.textContent = "Cancel";
+            var bOk = el("button", S.btnPri);
+            bOk.textContent = "📦  Create RMA Email";
+            foot.appendChild(bAll); foot.appendChild(bCa); foot.appendChild(bOk);
+            pan.sealFooter(foot);
+
+            var allOn = false;
+            bAll.addEventListener("click", function () {
+                allOn = !allOn;
+                rows.forEach(function (r) {
+                    r.cb.checked = allOn;
+                    r.cb.dispatchEvent(new Event("change"));
+                });
+                bAll.textContent = allOn ? "Select None" : "Select All";
+            });
+            bCa.addEventListener("click", p.close);
+
+            bOk.addEventListener("click", function () {
+                var picked = rows.filter(function (r) { return r.cb.checked; });
+                if (!picked.length) { alert("Select at least one item."); return; }
+
+                var rName = inName ? inName.value.trim() : name;
+                var rAcct = inAcct ? inAcct.value.trim() : acct;
+                if (!rName) { alert("Enter the account name."); return; }
+
+                var lines = picked.map(function (r) {
+                    var qv = parseFloat(r.qtyIn.value);
+                    var q  = (qv > 0) ? String(r.qtyIn.value).trim() : r.qty;
+                    var rsn = r.sel.value ? " — " + r.sel.value : "";
+                    return q + " — " + r.part + " — " +
+                           String(r.desc || "").substring(0, 30) + rsn;
+                });
+
+                p.close();
+                compose(
+                    "smareturns@smalink.com",
+                    "RMA for " + rName,
+                    "RMA for " + rName +
+                    "\nAccount Number: " + rAcct +
+                    "\n\n" + lines.join("\n") +
+                    "\n\nPlease email me any return paperwork and call tags as needed."
+                );
             });
         }
 
@@ -3240,344 +3181,13 @@ window.smalinkActions = function () {
             );
         }
 
-        if (PAGE.isSalesRep) {
-            pageActions.push({ label: "📈  Sales Rep Summary", fn: chartData });
-        }
-
-        if (PAGE.isCRM) {
-            pageActions.push({
-                label: "📋  Load CRM Meetings (New UI)",
-                fn: function () { showCRMPanel(); }
-            });
-            pageActions.push({
-                label: "📋  Load CRM Meetings (Classic)",
-                fn: function () { showCRMClassic(); }
-            });
-        }
-
         if (PAGE.isRemote) {
             pageActions.push(
                 { label: "📊  Order Viewer", fn: orderViewer }
             );
-        }
-
-
-        /* ============================================================
-           CRM CLASSIC  — original prompt-based version
-        ============================================================ */
-        function showCRMClassic() {
-            (async function() {
-                function s(t){return new Promise(function(r){setTimeout(r,t);})}
-                function pad2(n){return(n<10?"0":"")+n;}
-                function fmtMDY(d){return pad2(d.getMonth()+1)+"/"+pad2(d.getDate())+"/"+d.getFullYear();}
-                function fmtWP(d){var m=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()];return m+" "+d.getDate()+", "+d.getFullYear();}
-                function parseMDY(x){x=(x||"").trim();var m=x.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);if(!m)return null;var mm=+m[1],dd=+m[2],yy=+m[3];if(yy<100)yy+=2000;var d=new Date(yy,mm-1,dd,12,0,0,0);if(d.getMonth()!==mm-1||d.getDate()!==dd)return null;return d;}
-                function mondayOfLastWeek(){var n=new Date();n.setHours(12,0,0,0);var dow=n.getDay();var mon=new Date(n);mon.setDate(n.getDate()-(dow===0?6:dow-1));var lm=new Date(mon);lm.setDate(mon.getDate()-7);return lm;}
-                function allDocs(){var out=[{d:document,w:window}];document.querySelectorAll("iframe").forEach(function(f){try{var w=f.contentWindow;var d=f.contentDocument||w.document;if(d&&w)out.push({d:d,w:w});}catch(e){}});return out;}
-                function findFormCtx(){var docs=allDocs();for(var i=0;i<docs.length;i++){var d=docs[i].d;if(d.getElementById("ctl01_CompanyContactSelection1_tkAccount")||d.getElementById("ctl01_btnAdd"))return docs[i];}return allDocs()[0];}
-                function hideDP(ctx){try{var dp=ctx.d.getElementById("ui-datepicker-div")||document.getElementById("ui-datepicker-div");if(dp)dp.style.display="none";}catch(e){}}
-                function setv(ctx,el,v){if(!el)return false;el.focus();el.value=v;el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}));el.blur();hideDP(ctx);return true;}
-                function setCompleted(ctx){var sel=ctx.d.getElementById("ctl01_StatusCode_Selection1_ddlStatusCode");if(sel){sel.value="1";sel.dispatchEvent(new Event("change",{bubbles:true}));}}
-                async function waitAny(fn,ms,step){var t=Date.now();step=step||250;while(Date.now()-t<ms){var v=null;try{v=fn();}catch(e){}if(v)return v;await s(step);}return null;}
-                function norm(t){return(t||"").replace(/\s+/g," ").trim();}
-                async function selectAccount(ctx,acct){
-                    var d=ctx.d;
-                    var inp=d.getElementById("token-input-ctl01_CompanyContactSelection1_tkAccount")||
-                        d.querySelector('#ctl01_CompanyContactSelection1_divExternalLookup input[type="text"][autocomplete="wp-off"]');
-                    if(!inp)throw new Error("Account input not found");
-                    inp.focus();inp.value="";inp.dispatchEvent(new Event("input",{bubbles:true}));
-                    await s(120);inp.value=acct;inp.dispatchEvent(new Event("input",{bubbles:true}));
-                    await s(650);
-                    await waitAny(function(){return d.getElementById("WPDropdown_ctl01_CompanyContactSelection1_tkAccount");},12000);
-                    for(var tries=0;tries<80;tries++){
-                        await s(250);
-                        var dd=d.getElementById("WPDropdown_ctl01_CompanyContactSelection1_tkAccount");
-                        var items=dd?[...dd.querySelectorAll("li")]:[];
-                        if(!items.length)continue;
-                        var shipRe=new RegExp("\\[100-\\d+-"+acct+"\\]");
-                        var billRe=new RegExp("\\[100-"+acct+"\\]");
-                        var ship=items.find(function(li){return shipRe.test(norm(li.textContent));});
-                        var bill=items.find(function(li){return billRe.test(norm(li.textContent));});
-                        var pick=ship||bill||items.find(function(li){return norm(li.textContent).includes(acct);});
-                        if(pick){try{pick.scrollIntoView({block:"nearest"});}catch(e){}
-                            pick.dispatchEvent(new MouseEvent("mousedown",{bubbles:true}));
-                            pick.dispatchEvent(new MouseEvent("mouseup",{bubbles:true}));
-                            pick.dispatchEvent(new MouseEvent("click",{bubbles:true}));
-                            try{pick.click();}catch(e){}await s(700);return true;}
-                    }
-                    throw new Error("No selectable account "+acct);
-                }
-                async function clickOK(ctx){var b=ctx.d.getElementById("ctl01_btnAdd");if(!b)throw new Error("OK button not found");b.click();}
-                async function clickAddAnother(){
-                    var hit=await waitAny(function(){var docs=allDocs();for(var i=0;i<docs.length;i++){var d=docs[i].d;var a=d&&d.getElementById?d.getElementById("ctl01_btnReset"):null;if(!a&&d&&d.querySelectorAll)a=[...d.querySelectorAll("a")].find(function(x){return x&&/add another meeting/i.test(x.textContent||"");})||null;if(a)return{ctx:docs[i],el:a};}return null;},90000,400);
-                    if(!hit)throw new Error("Add another meeting not found");
-                    var ctx=hit.ctx,a=hit.el;await s(800);
-                    try{a.scrollIntoView({block:"center"});}catch(e){}await s(250);
-                    try{if(ctx.w&&typeof ctx.w.__doPostBack==="function"){ctx.w.__doPostBack("ctl01$btnReset","");return true;}}catch(e){}
-                    try{a.click();}catch(e){}await s(900);return true;
-                }
-                function dateKey(d){return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate());}
-                function parseSkipDates(raw){raw=String(raw||"").trim();if(!raw)return new Set();var toks=raw.split(/[\s,;]+/).filter(Boolean);var set=new Set();for(var i=0;i<toks.length;i++){var d=parseMDY(toks[i]);if(d)set.add(dateKey(d));}return set;}
-                function isBlocked(d,skip){var dow=d.getDay();if(dow===5||dow===6||dow===0)return true;return skip&&skip.has(dateKey(d));}
-                function nextAllowedDay(d,skip){var x=new Date(d);x.setHours(12,0,0,0);while(isBlocked(x,skip))x.setDate(x.getDate()+1);return x;}
-
-                var raw=prompt("Paste up to 12 six-digit account numbers (any format):","");
-                if(raw===null)return;
-                var accts=(String(raw).match(/[0-9]{6}/g)||[]).map(function(x){return x.trim();}).filter(Boolean).slice(0,12);
-                if(!accts.length){alert("No 6-digit accounts were found.");return;}
-                var defMon=mondayOfLastWeek();
-                var startStr=prompt("Enter START date (MM/DD/YYYY). Blank = Monday of last week ("+fmtMDY(defMon)+"):","");
-                if(startStr===null)return;
-                var base=parseMDY(startStr)||defMon;
-                var skipRaw=prompt("Optional: Skip dates (MM/DD/YYYY). Separate by space or comma.","");
-                if(skipRaw===null)return;
-                var skip=parseSkipDates(skipRaw);
-                var perDay=3;var day=nextAllowedDay(base,skip);var used=0;
-                for(var i=0;i<accts.length;i++){
-                    if(i>0&&i%perDay===0){day.setDate(day.getDate()+1);day=nextAllowedDay(day,skip);}
-                    var ctx=findFormCtx();var ds=fmtWP(day);
-                    setv(ctx,ctx.d.getElementById("ctl01_dtStartDate"),ds);
-                    setv(ctx,ctx.d.getElementById("ctl01_dtEndDate"),ds);
-                    setCompleted(ctx);
-                    await selectAccount(ctx,accts[i]);
-                    await s(400);await clickOK(ctx);await s(2600);await clickAddAnother();await s(1600);used++;
-                }
-                alert("Done: added "+used+" meeting(s).");
-            })();
-        }
-
-        /* ============================================================
-           CRM PANEL  — full UI version
-        ============================================================ */
-        function showCRMPanel() {
-            function _s(t){return new Promise(function(r){setTimeout(r,t);})}
-            function _pad2(n){return(n<10?"0":"")+n;}
-            function _fmtWP(d){var m=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()];return m+" "+d.getDate()+", "+d.getFullYear();}
-            function _fmtMDY(d){return _pad2(d.getMonth()+1)+"/"+_pad2(d.getDate())+"/"+d.getFullYear();}
-            function _dateKey(d){return d.getFullYear()+"-"+_pad2(d.getMonth()+1)+"-"+_pad2(d.getDate());}
-            function _mondayLastWeek(){var n=new Date();n.setHours(12,0,0,0);var dow=n.getDay();var mon=new Date(n);mon.setDate(n.getDate()-(dow===0?6:dow-1));var lm=new Date(mon);lm.setDate(mon.getDate()-7);return lm;}
-            function _allDocs(){var out=[{d:document,w:window}];document.querySelectorAll("iframe").forEach(function(f){try{var w=f.contentWindow;var d=f.contentDocument||w.document;if(d&&w)out.push({d:d,w:w});}catch(e){}});return out;}
-            function _findCtx(){var docs=_allDocs();for(var i=0;i<docs.length;i++){var d=docs[i].d;if(d.getElementById("ctl01_CompanyContactSelection1_tkAccount")||d.getElementById("ctl01_btnAdd"))return docs[i];}return _allDocs()[0];}
-            function _hideDP(ctx){try{var dp=ctx.d.getElementById("ui-datepicker-div")||document.getElementById("ui-datepicker-div");if(dp)dp.style.display="none";}catch(e){}}
-            function _setv(ctx,el,v){if(!el)return false;el.focus();el.value=v;el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}));el.blur();_hideDP(ctx);return true;}
-            function _setCompleted(ctx){var sel=ctx.d.getElementById("ctl01_StatusCode_Selection1_ddlStatusCode");if(sel){sel.value="1";sel.dispatchEvent(new Event("change",{bubbles:true}));}}
-            function _norm(t){return(t||"").replace(/\s+/g," ").trim();}
-            async function _waitAny(fn,ms,step){var t=Date.now();step=step||250;while(Date.now()-t<ms){var v=null;try{v=fn();}catch(e){}if(v)return v;await _s(step);}return null;}
-            async function _selectAccount(ctx,acct){
-                var d=ctx.d;
-                var inp=d.getElementById("token-input-ctl01_CompanyContactSelection1_tkAccount")||
-                    d.querySelector('#ctl01_CompanyContactSelection1_divExternalLookup input[type="text"][autocomplete="wp-off"]');
-                if(!inp)throw new Error("Account input not found");
-                inp.focus();inp.value="";inp.dispatchEvent(new Event("input",{bubbles:true}));
-                await _s(120);inp.value=acct;inp.dispatchEvent(new Event("input",{bubbles:true}));
-                await _s(650);
-                await _waitAny(function(){return d.getElementById("WPDropdown_ctl01_CompanyContactSelection1_tkAccount");},12000);
-                for(var tries=0;tries<80;tries++){
-                    await _s(250);
-                    var dd=d.getElementById("WPDropdown_ctl01_CompanyContactSelection1_tkAccount");
-                    var items=dd?[...dd.querySelectorAll("li")]:[];
-                    if(!items.length)continue;
-                    var shipRe=new RegExp("\\[100-\\d+-"+acct+"\\]");
-                    var billRe=new RegExp("\\[100-"+acct+"\\]");
-                    var ship=items.find(function(li){return shipRe.test(_norm(li.textContent));});
-                    var bill=items.find(function(li){return billRe.test(_norm(li.textContent));});
-                    var pick=ship||bill||items.find(function(li){return _norm(li.textContent).includes(acct);});
-                    if(pick){try{pick.scrollIntoView({block:"nearest"});}catch(e){}
-                        pick.dispatchEvent(new MouseEvent("mousedown",{bubbles:true}));
-                        pick.dispatchEvent(new MouseEvent("mouseup",{bubbles:true}));
-                        pick.dispatchEvent(new MouseEvent("click",{bubbles:true}));
-                        try{pick.click();}catch(e){}await _s(700);return true;}
-                }
-                throw new Error("No selectable account "+acct);
-            }
-            async function _clickOK(ctx,testMode){if(testMode){return true;}var b=ctx.d.getElementById("ctl01_btnAdd");if(!b)throw new Error("OK button not found");b.click();}
-            async function _clickAddAnother(){
-                var hit=await _waitAny(function(){var docs=_allDocs();for(var i=0;i<docs.length;i++){var d=docs[i].d;var a=d&&d.getElementById?d.getElementById("ctl01_btnReset"):null;if(!a&&d&&d.querySelectorAll)a=[...d.querySelectorAll("a")].find(function(x){return x&&/add another meeting/i.test(x.textContent||"");})||null;if(a)return{ctx:docs[i],el:a};}return null;},90000,400);
-                if(!hit)throw new Error("Add another meeting not found");
-                var ctx=hit.ctx,a=hit.el;await _s(800);
-                try{a.scrollIntoView({block:"center"});}catch(e){}await _s(250);
-                try{if(ctx.w&&typeof ctx.w.__doPostBack==="function"){ctx.w.__doPostBack("ctl01$btnReset","");return true;}}catch(e){}
-                try{a.click();}catch(e){}await _s(900);return true;
-            }
-
-            var defDate=_mondayLastWeek();
-            var ov=el("div","position:fixed;inset:0;background:rgba(15,23,42,.75);z-index:9999999;display:flex;align-items:center;justify-content:center;font-family:system-ui;padding:12px");
-            var box=el("div","background:#fff;border-radius:14px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.4)");
-            var hdr=el("div","background:#1a1a2e;color:#fff;padding:13px 16px;border-radius:14px 14px 0 0;display:flex;align-items:center;justify-content:space-between");
-            var htitle=el("div","font-weight:800;font-size:15px"); htitle.textContent="\uD83D\uDCCB  Load CRM Meetings";
-            var hclose=el("button","background:none;border:none;color:#fff;font-size:20px;cursor:pointer;padding:0 4px;line-height:1"); hclose.textContent="\u2715";
-            hclose.onclick=function(){document.body.removeChild(ov);};
-            hdr.appendChild(htitle);hdr.appendChild(hclose);box.appendChild(hdr);
-            var body=el("div","padding:16px;display:flex;flex-direction:column;gap:12px");
-
-            function secLbl(txt){var d=el("div","font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:2px");d.textContent=txt;return d;}
-            function mkInp(ph,val){var i=el("input","width:100%;height:38px;padding:0 10px;font-size:13px;border:1.5px solid #d1d5db;border-radius:8px;outline:none;box-sizing:border-box;background:#fafafa");i.placeholder=ph||"";i.value=val||"";return i;}
-
-            /* Account numbers */
-            var acctWrap=el("div",""); acctWrap.appendChild(secLbl("Account Numbers"));
-            var acctHint=el("div","font-size:11px;color:#9ca3af;margin-bottom:4px"); acctHint.textContent="Paste any number of 6-digit account numbers";
-            var acctTA=el("textarea","width:100%;height:80px;padding:8px 10px;font-size:13px;border:1.5px solid #d1d5db;border-radius:8px;outline:none;box-sizing:border-box;background:#fafafa;resize:vertical;font-family:monospace");
-            acctTA.placeholder="123456 234567 345678\nor one per line...";
-            var acctCount=el("div","font-size:11px;color:#6b7280;margin-top:4px;font-weight:600"); acctCount.textContent="0 accounts detected";
-            function getAccts(){return(acctTA.value.match(/[0-9]{6}/g)||[]).map(function(x){return x.trim();}).filter(function(v,i,a){return a.indexOf(v)===i;});}
-            acctTA.addEventListener("input",function(){var a=getAccts();acctCount.textContent=a.length+" account"+(a.length!==1?"s":"")+" detected";acctCount.style.color=a.length?"#16a34a":"#6b7280";buildSchedule(a.length,false);});
-            acctWrap.appendChild(acctHint);acctWrap.appendChild(acctTA);acctWrap.appendChild(acctCount);body.appendChild(acctWrap);
-
-            /* Start date */
-            var dateWrap=el("div",""); dateWrap.appendChild(secLbl("Start Date"));
-            var dateInp=mkInp("MM/DD/YYYY",""); dateInp.type="date";
-            dateInp.value=defDate.getFullYear()+"-"+_pad2(defDate.getMonth()+1)+"-"+_pad2(defDate.getDate());
-            dateInp.addEventListener("change",function(){buildSchedule(getAccts().length,true);});
-            dateWrap.appendChild(dateInp); body.appendChild(dateWrap);
-
-            /* Skip dates */
-            var skipWrap=el("div",""); skipWrap.appendChild(secLbl("Skip Dates (optional)"));
-            var skipHint=el("div","font-size:11px;color:#9ca3af;margin-bottom:6px"); skipHint.textContent="Pick holidays or days off to exclude.";
-            skipWrap.appendChild(skipHint);
-            var skipPickRow=el("div","display:flex;gap:6px;align-items:center;margin-bottom:6px");
-            var skipPicker=el("input","height:34px;padding:0 8px;font-size:13px;border:1.5px solid #d1d5db;border-radius:8px;outline:none;background:#fafafa;flex:1");
-            skipPicker.type="date";
-            var skipAddBtn=el("button","height:34px;padding:0 12px;font-size:13px;font-weight:700;border:none;border-radius:8px;background:#1a1a2e;color:#fff;cursor:pointer;white-space:nowrap");
-            skipAddBtn.textContent="+ Add";
-            skipPickRow.appendChild(skipPicker);skipPickRow.appendChild(skipAddBtn);skipWrap.appendChild(skipPickRow);
-            var skipTags=el("div","display:flex;flex-wrap:wrap;gap:5px;min-height:28px");
-            skipWrap.appendChild(skipTags); body.appendChild(skipWrap);
-            var skipDates=[];
-            function getSkipSet(){var s=new Set();skipDates.forEach(function(d){s.add(_dateKey(d));});return s;}
-            function renderSkipTags(){skipTags.innerHTML="";skipDates.forEach(function(d,i){var tag=el("div","display:inline-flex;align-items:center;gap:5px;padding:3px 8px;background:#fef3c7;border:1px solid #fcd34d;border-radius:20px;font-size:12px;font-weight:700;color:#92400e");tag.textContent=_fmtMDY(d);var rm=el("button","background:none;border:none;cursor:pointer;color:#92400e;font-size:14px;padding:0;line-height:1;margin-left:2px");rm.textContent="\u00d7";rm.onclick=function(){skipDates.splice(i,1);renderSkipTags();buildSchedule(getAccts().length,true);};tag.appendChild(rm);skipTags.appendChild(tag);});}
-            skipAddBtn.addEventListener("click",function(){var v=skipPicker.value;if(!v)return;var d=new Date(v+"T12:00:00");var key=_dateKey(d);if(skipDates.some(function(x){return _dateKey(x)===key;})){skipPicker.value="";return;}skipDates.push(d);skipDates.sort(function(a,b){return a-b;});skipPicker.value="";renderSkipTags();buildSchedule(getAccts().length,true);});
-            skipPicker.addEventListener("keydown",function(e){if(e.key==="Enter")skipAddBtn.click();});
-
-            /* Options: Friday + default per day */
-            var optRow=el("div","display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:2px");
-            var friWrap=el("label","display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#1a1a2e;cursor:pointer;padding:6px 10px;background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:8px");
-            var friCb=el("input","width:16px;height:16px;cursor:pointer;accent-color:#16a34a"); friCb.type="checkbox";friCb.checked=false;
-            friWrap.appendChild(friCb);friWrap.appendChild(document.createTextNode("Include Fridays"));
-            friCb.addEventListener("change",function(){buildSchedule(getAccts().length,true);});
-            var defDayWrap=el("div","display:flex;align-items:center;gap:6px;padding:6px 10px;background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:8px");
-            var defDayLbl=el("div","font-size:13px;font-weight:700;color:#1a1a2e;white-space:nowrap"); defDayLbl.textContent="Default per day:";
-            var defDayInp=el("input","width:52px;height:30px;text-align:center;font-size:14px;font-weight:800;border:1.5px solid #d1d5db;border-radius:6px;outline:none;background:#fff");
-            defDayInp.type="number";defDayInp.min="1";defDayInp.max="30";defDayInp.value="3";
-            defDayInp.addEventListener("change",function(){buildSchedule(getAccts().length,true);});
-            defDayWrap.appendChild(defDayLbl);defDayWrap.appendChild(defDayInp);
-            optRow.appendChild(friWrap);optRow.appendChild(defDayWrap);
-
-            /* Schedule section */
-            var schedSection=el("div","");
-            schedSection.appendChild(secLbl("Schedule \u2014 Accounts Per Day"));
-            schedSection.appendChild(optRow);
-            var schedHint2=el("div","font-size:11px;color:#9ca3af;margin:4px 0 6px"); schedHint2.textContent="Each row is a day. Uncheck to skip, adjust count per day.";
-            schedSection.appendChild(schedHint2);
-            var schedGrid=el("div","display:flex;flex-direction:column;gap:5px");
-            schedSection.appendChild(schedGrid); body.appendChild(schedSection);
-
-            var dayRows=[];
-            var DAYS=["","Mon","Tue","Wed","Thu","Fri","","Sun"];
-
-            function _nextDay(d,skip){var x=new Date(d);x.setHours(12,0,0,0);while(true){var dow=x.getDay();if(dow===0||dow===6){x.setDate(x.getDate()+1);continue;}if(dow===5&&!friCb.checked){x.setDate(x.getDate()+1);continue;}if(skip&&skip.has(_dateKey(x))){x.setDate(x.getDate()+1);continue;}break;}return x;}
-
-            function makeRow(dayDate,perDef){var dow=dayDate.getDay();var isFri=dow===5;var row=el("div","display:flex;align-items:center;gap:8px;padding:7px 10px;background:"+(isFri?"#fefce8":"#f9fafb")+";border-radius:8px;border:1px solid "+(isFri?"#fef08a":"#e5e7eb"));var cb=el("input","width:16px;height:16px;cursor:pointer;accent-color:#1a1a2e");cb.type="checkbox";cb.checked=true;var lbl=el("div","font-size:13px;font-weight:700;min-width:96px;color:"+(isFri?"#854d0e":"#1a1a2e"));lbl.textContent=DAYS[dow]+" "+_fmtMDY(dayDate)+(isFri?" \uD83D\uDFE1":"");var cntInp=el("input","width:52px;height:30px;text-align:center;font-size:13px;font-weight:700;border:1.5px solid #d1d5db;border-radius:6px;outline:none;background:#fff");cntInp.type="number";cntInp.min="1";cntInp.max="30";cntInp.value=String(perDef);var cntLbl=el("div","font-size:11px;color:#6b7280");cntLbl.textContent="accts";cb.addEventListener("change",function(){row.style.opacity=cb.checked?"1":".45";cntInp.disabled=!cb.checked;updateSummary();});row.appendChild(cb);row.appendChild(lbl);row.appendChild(cntInp);row.appendChild(cntLbl);schedGrid.appendChild(row);dayRows.push({date:dayDate,cb:cb,countInp:cntInp});}
-
-            function buildSchedule(totalAccts,forceRebuild){var skipSet=getSkipSet();var perDef=parseInt(defDayInp.value)||3;if(forceRebuild||!dayRows.length){schedGrid.innerHTML="";dayRows=[];var startVal=dateInp.value;var base=startVal?new Date(startVal+"T12:00:00"):defDate;var needed=Math.max(1,Math.ceil((totalAccts||0)/perDef));if(needed>20)needed=20;var cur=_nextDay(base,skipSet);for(var d=0;d<needed;d++){makeRow(cur,perDef);var nx=new Date(cur);nx.setDate(nx.getDate()+1);cur=_nextDay(nx,skipSet);}updateSummary();return;}var totalSlots=0;dayRows.forEach(function(r){if(r.cb.checked)totalSlots+=parseInt(r.countInp.value)||0;});if(totalSlots>=totalAccts){updateSummary();return;}var last=dayRows[dayRows.length-1].date;var nx2=new Date(last);nx2.setDate(nx2.getDate()+1);var cur2=_nextDay(nx2,skipSet);var safety=0;while(totalSlots<totalAccts&&safety<20){makeRow(cur2,perDef);totalSlots+=perDef;var nx3=new Date(cur2);nx3.setDate(nx3.getDate()+1);cur2=_nextDay(nx3,skipSet);safety++;}updateSummary();}
-
-            /* Summary */
-            var summaryBox=el("div","padding:10px 12px;background:#eef2fb;border-radius:8px;border:1.5px solid #bfdbfe;font-size:12px;color:#1e40af;font-weight:600");
-            summaryBox.textContent="Paste account numbers to see schedule."; body.appendChild(summaryBox);
-
-            function updateSummary(){var accts=getAccts();var total=0;dayRows.forEach(function(r){if(r.cb.checked)total+=parseInt(r.countInp.value)||0;});var needed=accts.length;var ok=total>=needed;summaryBox.textContent=needed+" account"+(needed!==1?"s":"")+" across "+dayRows.filter(function(r){return r.cb.checked;}).length+" day"+(dayRows.filter(function(r){return r.cb.checked;}).length!==1?"s":"")+" ("+total+" slots)"+(ok?"":" \u2014 \u26a0\ufe0f need "+(needed-total)+" more slots");summaryBox.style.borderColor=ok?"#bfdbfe":"#fca5a5";summaryBox.style.background=ok?"#eef2fb":"#fef2f2";summaryBox.style.color=ok?"#1e40af":"#991b1b";}
-
-            schedGrid.addEventListener("input",function(){updateSummary();});
-
-            /* Random comments */
-            var commentSection=el("div","");
-            var commentToggleRow=el("label","display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;font-size:13px;font-weight:700;color:#0369a1");
-            var commentCb=el("input","width:17px;height:17px;cursor:pointer;accent-color:#0369a1"); commentCb.type="checkbox";commentCb.checked=false;
-            commentToggleRow.appendChild(commentCb);commentToggleRow.appendChild(document.createTextNode("\uD83D\uDCAC  Random Visit Comments"));
-            commentSection.appendChild(commentToggleRow);
-            var commentBody=el("div","display:none;margin-top:8px;padding:10px 12px;background:#f8fafc;border:1.5px solid #bae6fd;border-radius:8px");
-            var commentHint=el("div","font-size:11px;color:#6b7280;margin-bottom:6px;line-height:1.5"); commentHint.textContent="Up to 6 comments, one per line. A random one is picked for each meeting.";
-            commentBody.appendChild(commentHint);
-            var commentTA=el("textarea","width:100%;height:110px;padding:8px 10px;font-size:12px;line-height:1.6;border:1.5px solid #d1d5db;border-radius:8px;outline:none;background:#fff;resize:vertical;font-family:system-ui;box-sizing:border-box");
-            commentTA.placeholder="Visited customer and reviewed product line.\nDiscussed upcoming promotions and pricing.\nChecked inventory levels and placed follow-up order.\nIntroduced new seasonal specials.\nConducted product knowledge review.\nCollected feedback on recent orders.";
-            commentBody.appendChild(commentTA);
-            var commentCount=el("div","font-size:11px;color:#6b7280;margin-top:4px;font-weight:600"); commentCount.textContent="0 comments";
-            function getComments(){return commentTA.value.split("\n").map(function(l){return l.trim();}).filter(function(l){return l.length>0;}).slice(0,6);}
-            commentTA.addEventListener("input",function(){var c=getComments();commentCount.textContent=c.length+" comment"+(c.length!==1?"s":"")+" (max 6)";commentCount.style.color=c.length>=6?"#16a34a":"#6b7280";});
-            commentBody.appendChild(commentCount); commentSection.appendChild(commentBody); body.appendChild(commentSection);
-            commentCb.addEventListener("change",function(){commentBody.style.display=commentCb.checked?"block":"none";});
-
-            /* All Day + Sync */
-            var optionsRow=el("div","display:flex;gap:8px;flex-wrap:wrap");
-            var allDayWrap=el("label","display:flex;align-items:center;gap:7px;cursor:pointer;padding:8px 12px;background:#f5f3ff;border:1.5px solid #ddd6fe;border-radius:8px;font-size:13px;font-weight:700;color:#5b21b6;flex:1;white-space:nowrap");
-            var allDayCb=el("input","width:17px;height:17px;cursor:pointer;accent-color:#7c3aed"); allDayCb.type="checkbox";allDayCb.checked=false;
-            allDayWrap.appendChild(allDayCb);allDayWrap.appendChild(document.createTextNode("\uD83D\uDDD3  All Day Event"));
-            var syncWrap=el("label","display:flex;align-items:center;gap:7px;cursor:pointer;padding:8px 12px;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:8px;font-size:13px;font-weight:700;color:#1d4ed8;flex:1;white-space:nowrap");
-            var syncCb=el("input","width:17px;height:17px;cursor:pointer;accent-color:#2563eb"); syncCb.type="checkbox";syncCb.checked=false;
-            syncWrap.appendChild(syncCb);syncWrap.appendChild(document.createTextNode("\u2601\uFE0F  Sync Office 365"));
-            optionsRow.appendChild(allDayWrap);optionsRow.appendChild(syncWrap); body.appendChild(optionsRow);
-
-            /* Test mode */
-            var testRow=el("div","display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff7ed;border-radius:8px;border:1.5px solid #fed7aa");
-            var testCb=el("input","width:18px;height:18px;cursor:pointer;accent-color:#ea580c"); testCb.type="checkbox";testCb.checked=false;
-            var testLbl=el("div","font-size:13px;font-weight:700;color:#9a3412"); testLbl.textContent="\uD83E\uDDEA Test Mode \u2014 fills form but does NOT submit";
-            testRow.appendChild(testCb);testRow.appendChild(testLbl); body.appendChild(testRow);
-
-            /* Progress */
-            var progWrap=el("div","display:none");
-            var progBarWrap=el("div","height:8px;background:#e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:6px");
-            var progBar=el("div","height:100%;background:#27ae60;width:0%;border-radius:8px;transition:width .3s");
-            var progLbl=el("div","font-size:12px;color:#6b7280;margin-bottom:6px");
-            var progLog=el("div","max-height:120px;overflow-y:auto;font-size:11px;font-family:monospace;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:6px");
-            progBarWrap.appendChild(progBar);progWrap.appendChild(progBarWrap);progWrap.appendChild(progLbl);progWrap.appendChild(progLog);
-            body.appendChild(progWrap);
-            function logLine(txt,ok){var ln=document.createElement("div");ln.style.cssText="padding:1px 0;color:"+(ok===false?"#dc2626":ok===true?"#16a34a":"#374151");ln.textContent=txt;progLog.appendChild(ln);progLog.scrollTop=progLog.scrollHeight;}
-
-            /* Buttons */
-            var btnRow=el("div","display:flex;gap:8px");
-            var btnCancel=el("button","flex:1;height:42px;border:1.5px solid #d1d5db;border-radius:8px;background:#fff;font-size:13px;font-weight:700;cursor:pointer;color:#374151"); btnCancel.textContent="Cancel";
-            btnCancel.onclick=function(){document.body.removeChild(ov);};
-            var btnRun=el("button","flex:2;height:42px;border:none;border-radius:8px;background:#1a1a2e;color:#fff;font-size:13px;font-weight:800;cursor:pointer"); btnRun.textContent="\u25B6  Run";
-            body.appendChild(btnRow);btnRow.appendChild(btnCancel);btnRow.appendChild(btnRun);
-            box.appendChild(body);ov.appendChild(box);document.body.appendChild(ov);
-            buildSchedule(0,true);
-
-            btnRun.onclick=async function(){
-                var accts=getAccts();
-                if(!accts.length){alert("No 6-digit account numbers found.");return;}
-                var testMode=testCb.checked;
-                var queue=[];var ai=0;
-                for(var ri=0;ri<dayRows.length&&ai<accts.length;ri++){var row=dayRows[ri];if(!row.cb.checked)continue;var perDay=parseInt(row.countInp.value)||3;for(var j=0;j<perDay&&ai<accts.length;j++,ai++){queue.push({acct:accts[ai],date:row.date});}}
-                if(!queue.length){alert("No active days in schedule.");return;}
-                if(!confirm((testMode?"[TEST MODE] ":"")+"Submit "+queue.length+" meeting"+(queue.length!==1?"s":"")+"?")){return;}
-                btnRun.disabled=true;btnRun.textContent="\u23F3 Running...";btnCancel.disabled=true;
-                progWrap.style.display="block";
-                var done=0,failed=0;
-                for(var qi=0;qi<queue.length;qi++){
-                    var item=queue[qi];
-                    progBar.style.width=Math.round(qi/queue.length*100)+"%";
-                    progLbl.textContent="Processing "+(qi+1)+" of "+queue.length+" \u2014 "+item.acct+(testMode?" [TEST]":"");
-                    logLine((qi+1)+"/"+queue.length+" "+item.acct+" \u2192 "+_fmtMDY(item.date)+(testMode?" [TEST]":""));
-                    try{
-                        var ctx=_findCtx();
-                        _setv(ctx,ctx.d.getElementById("ctl01_dtStartDate"),_fmtWP(item.date));
-                        _setv(ctx,ctx.d.getElementById("ctl01_dtEndDate"),_fmtWP(item.date));
-                        _setCompleted(ctx);
-                        var allDayEl=ctx.d.getElementById("ctl01_cbAllDay");
-                        if(allDayEl&&(allDayCb.checked!==allDayEl.checked)){allDayEl.click();allDayEl.dispatchEvent(new Event("change",{bubbles:true}));}
-                        var syncEl=ctx.d.getElementById("ctl01_cbSync");
-                        if(syncEl&&(syncCb.checked!==syncEl.checked)){syncEl.click();syncEl.dispatchEvent(new Event("change",{bubbles:true}));}
-                        if(commentCb.checked){var comments=getComments();if(comments.length){var pick=comments[Math.floor(Math.random()*comments.length)];var notesEl=ctx.d.getElementById("ctl01_txtNotes");_setv(ctx,notesEl,pick);logLine("  \uD83D\uDCAC "+pick.slice(0,40)+(pick.length>40?"\u2026":""));}}
-                        await _selectAccount(ctx,item.acct);
-                        await _s(400);
-                        await _clickOK(ctx,testMode);
-                        if(!testMode){await _s(2600);await _clickAddAnother();await _s(1600);}else{await _s(600);}
-                        done++;logLine("  \u2713 OK",true);
-                    }catch(err){failed++;logLine("  \u2717 "+err.message,false);}
-                }
-                progBar.style.width="100%";
-                progLbl.textContent=(testMode?"[TEST] ":"")+"Done \u2014 "+done+" added"+(failed?" | "+failed+" failed":"")+" \uD83C\uDF89";
-                btnRun.textContent="\u2713 Done";btnCancel.disabled=false;btnCancel.textContent="Close";
-            };
+            pageActions.push(
+                { label: "📦  Remote Order RMA", fn: remoteOrderRma }
+            );
         }
 
 
@@ -3799,54 +3409,8 @@ window.smalinkActions = function () {
             "background:#1a1a2e;color:#fff;padding:12px 14px;flex-shrink:0;" +
             "display:flex;align-items:center;justify-content:space-between;gap:6px");
 
-        /* ── LINK icon button (left) — opens vendor panel directly ── */
-        var mLink = el("button",
-            "flex:0 0 auto;width:30px;height:30px;" +
-            "border-radius:8px;border:2px solid rgba(255,255,255,.45);" +
-            "background:transparent;color:#fff;" +
-            "cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0");
-
-        /* contacts / address book icon */
-        var mLinkIcon = document.createElementNS("http://www.w3.org/2000/svg","svg");
-        mLinkIcon.setAttribute("viewBox","0 0 24 24");
-        mLinkIcon.setAttribute("fill","none");
-        mLinkIcon.setAttribute("stroke","currentColor");
-        mLinkIcon.setAttribute("stroke-width","2");
-        mLinkIcon.setAttribute("stroke-linecap","round");
-        mLinkIcon.setAttribute("stroke-linejoin","round");
-        mLinkIcon.style.cssText = "width:16px;height:16px";
-        var mli1 = document.createElementNS("http://www.w3.org/2000/svg","rect");
-        mli1.setAttribute("x","4"); mli1.setAttribute("y","2");
-        mli1.setAttribute("width","16"); mli1.setAttribute("height","20");
-        mli1.setAttribute("rx","2");
-        var mli2 = document.createElementNS("http://www.w3.org/2000/svg","line");
-        mli2.setAttribute("x1","2"); mli2.setAttribute("y1","7");
-        mli2.setAttribute("x2","4"); mli2.setAttribute("y2","7");
-        var mli3 = document.createElementNS("http://www.w3.org/2000/svg","line");
-        mli3.setAttribute("x1","2"); mli3.setAttribute("y1","12");
-        mli3.setAttribute("x2","4"); mli3.setAttribute("y2","12");
-        var mli4 = document.createElementNS("http://www.w3.org/2000/svg","circle");
-        mli4.setAttribute("cx","12"); mli4.setAttribute("cy","9"); mli4.setAttribute("r","3");
-        var mli5 = document.createElementNS("http://www.w3.org/2000/svg","path");
-        mli5.setAttribute("d","M6 21 Q6 16 12 16 Q18 16 18 21");
-        mLinkIcon.appendChild(mli1);
-        mLinkIcon.appendChild(mli2);
-        mLinkIcon.appendChild(mli3);
-        mLinkIcon.appendChild(mli4);
-        mLinkIcon.appendChild(mli5);
-        mLink.appendChild(mLinkIcon);
-
-        mLink.addEventListener("click", function (e) {
-            e.stopPropagation();
-            menuOv.parentNode.removeChild(menuOv);
-            showVendorPanel();
-        });
-        mLink.addEventListener("touchstart", function () {
-            mLink.style.background = "rgba(255,255,255,.15)";
-        }, { passive: true });
-        mLink.addEventListener("touchend", function () {
-            mLink.style.background = "transparent";
-        }, { passive: true });
+        /* spacer (same width as the help button) keeps the title centred */
+        var mLink = el("span", "flex:0 0 auto;width:30px;height:30px");
 
         /* ── Title (centre) ── */
         var mTitle = el("span",
@@ -3870,11 +3434,6 @@ window.smalinkActions = function () {
         mHdr.appendChild(mTitle);
         mHdr.appendChild(mHelp);
         menu.appendChild(mHdr);
-
-        /* Vendor directory opens as standalone page */
-        function showVendorPanel() {
-            window.open("https://wildref.us/vendors.html", "_blank");
-        }
 
         /* scrollable body — grows to fill, shrinks when needed */
         var mBody = el("div",
